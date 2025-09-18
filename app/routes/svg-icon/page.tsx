@@ -316,7 +316,7 @@ export default function SvgIconGeneratorPage() {
           </header>
 
           <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-            <div className="flex w-full gap-6">
+            <div className="flex flex-col sm:flex-row w-full gap-6">
               <Card className="w-full shadow-sm">
                 <CardHeader>
                   <CardTitle>SVG 입력</CardTitle>
