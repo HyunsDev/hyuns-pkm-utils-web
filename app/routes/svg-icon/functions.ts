@@ -91,25 +91,24 @@ function generateSquirclePath(
     return `M${x},${y}h${width}v${height}h${-width}Z`;
   }
 
-  const k = 0.8;
+  const k = 0.8; // Approximation factor for Apple's superellipse
   const right = x + width;
   const bottom = y + height;
   const r = maxRadius;
+  const cp = r * k;
 
   return [
     `M${x + r},${y}`,
     `H${right - r}`,
-    `C${right - r + r * k},${y} ${right},${y + r - r * k} ${right},${y + r}`,
+    `C${right - r + cp},${y} ${right},${y + r - cp} ${right},${y + r}`,
     `V${bottom - r}`,
-    `C${right},${bottom - r + r * k} ${right - r + r * (1 - k)},${bottom} ${
+    `C${right},${bottom - r + cp} ${right - r + cp},${bottom} ${
       right - r
     },${bottom}`,
     `H${x + r}`,
-    `C${x + r - r * k},${bottom} ${x},${bottom - r + r * (1 - k)} ${x},${
-      bottom - r
-    }`,
+    `C${x + r - cp},${bottom} ${x},${bottom - r + cp} ${x},${bottom - r}`,
     `V${y + r}`,
-    `C${x},${y + r - r * k} ${x + r - r * (1 - k)},${y} ${x + r},${y}`,
+    `C${x},${y + r - cp} ${x + r - cp},${y} ${x + r},${y}`,
     "Z",
   ].join(" ");
 }
