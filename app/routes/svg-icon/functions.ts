@@ -117,8 +117,8 @@ export function generateBackgroundImageSvg(
   iconDataUrl: string,
   bgColor: string
 ) {
-  const bgWidth = 1500;
-  const bgHeight = 600;
+  const bgWidth = 3000;
+  const bgHeight = 1200;
   const iconSize = 128;
   const iconX = (bgWidth - iconSize) / 2;
   const iconY = (bgHeight - iconSize) / 2;

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useLocation } from "react-router";
-import { Home, Image, PenSquare, Rows } from "lucide-react";
+import { BookA, Home, Image, PenSquare, Rows } from "lucide-react";
 
 import {
   Sidebar,
@@ -44,6 +44,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "SVG 아이콘 생성", href: "/svg-icon", icon: PenSquare },
       { label: "이미지 아이콘 생성", href: "/image-icon", icon: Image },
+      { label: "유니북 아이콘 생성", href: "/unibook-icon", icon: BookA },
       { label: "라인 생성", href: "/line", icon: Rows },
     ],
   },

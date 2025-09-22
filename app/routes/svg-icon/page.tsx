@@ -547,7 +547,7 @@ export default function SvgIconGeneratorPage() {
 
                 <Card className="w-full shadow-sm">
                   <CardHeader>
-                    <CardTitle>배경 이미지 (1500×600)</CardTitle>
+                    <CardTitle>배경 이미지 (3000×1200)</CardTitle>
                     <CardDescription>
                       생성된 아이콘을 중앙에 배치한 배경 이미지를 제공합니다.
                     </CardDescription>
