@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MetaArgs } from "react-router";
 import { Download, RefreshCcw, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -22,21 +16,41 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { SidebarInset, SidebarTrigger } from "~/components/ui/sidebar";
 import { MainSidebar } from "~/containers/MainSidebar/MainSidebar";
-import { COLOR_PRESETS } from "~/data/color-preset";
+import { cn } from "~/lib/utils";
 
 const ICON_EXPORT_SIZE = 512;
-const BACKGROUND_WIDTH = 3000;
-const BACKGROUND_HEIGHT = 1200;
-const BACKGROUND_ICON_SIZE = 256;
-const DEFAULT_BASE_FILENAME = "my-image";
-const DEFAULT_BACKGROUND_COLOR = "#f0f0f0";
+const COVER_WIDTH = 3000;
+const COVER_HEIGHT = 1200;
+const COVER_ICON_SIZE = 300;
+const DEFAULT_BASE_FILENAME = "unibook-icon";
+const DEFAULT_BACKGROUND_COLOR = "#ffffff";
 const DEFAULT_CORNER_RADIUS_PERCENT = 40;
-const DEFAULT_PADDING = 24;
+const DEFAULT_PADDING = 0;
 const MAX_PADDING = 160;
 const MAX_CORNER_RADIUS_PERCENT = 50;
 const CORNER_SLIDER_STEP = 0.1;
 
-const FALLBACK_COLOR: RgbColor = { r: 240, g: 240, b: 240 };
+const FALLBACK_COLOR: RgbColor = { r: 255, g: 255, b: 255 };
+
+const LETTER_ICONS: IconOption[] = Array.from({ length: 26 }, (_, index) => {
+  const letter = String.fromCharCode(65 + index);
+  return {
+    id: letter.toLowerCase(),
+    label: letter,
+    src: `/unibook-iconset/${letter}.png`,
+  };
+});
+
+const UNIBOOK_ICONS: IconOption[] = [
+  { id: "logo", label: "Logo", src: "/unibook-iconset/Logo.png" },
+  ...LETTER_ICONS,
+];
+
+type IconOption = {
+  id: string;
+  label: string;
+  src: string;
+};
 
 type RgbColor = {
   r: number;
@@ -44,7 +58,7 @@ type RgbColor = {
   b: number;
 };
 
-type ImageInfo = {
+type IconInfo = {
   fileName: string;
   width: number;
   height: number;
@@ -52,7 +66,7 @@ type ImageInfo = {
 
 type ProcessedAssets = {
   icon: string;
-  background: string;
+  cover: string;
 };
 
 type GenerationSettings = {
@@ -63,19 +77,21 @@ type GenerationSettings = {
 
 export function meta({}: MetaArgs) {
   return [
-    { title: "이미지 아이콘 생성 | Hyuns PKM Utils" },
+    { title: "유니북 아이콘 생성 | Hyuns PKM Utils" },
     {
       name: "description",
-      content: "이미지 파일로 1:1 아이콘과 배경 이미지를 만들어보세요.",
+      content:
+        "유니북 아이콘셋으로 1:1 아이콘과 3000×1200 커버 이미지를 만들어보세요.",
     },
   ];
 }
 
-export default function ImageIconGeneratorPage() {
+export default function UnibookIconGeneratorPage() {
+  const [selectedIcon, setSelectedIcon] = useState<IconOption | null>(null);
   const [iconDataUrl, setIconDataUrl] = useState("");
-  const [backgroundDataUrl, setBackgroundDataUrl] = useState("");
+  const [coverDataUrl, setCoverDataUrl] = useState("");
   const [baseFilename, setBaseFilename] = useState(DEFAULT_BASE_FILENAME);
-  const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
+  const [iconInfo, setIconInfo] = useState<IconInfo | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backgroundColor, setBackgroundColor] = useState(
@@ -90,22 +106,21 @@ export default function ImageIconGeneratorPage() {
   const [padding, setPadding] = useState(DEFAULT_PADDING);
   const [imageVersion, setImageVersion] = useState(0);
 
-  const lastFileRef = useRef<File | null>(null);
   const imageElementRef = useRef<HTMLImageElement | null>(null);
   const taskIdRef = useRef(0);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const selectedIconIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
-      lastFileRef.current = null;
       imageElementRef.current = null;
+      selectedIconIdRef.current = null;
     };
   }, []);
 
   const resetOutputs = useCallback(() => {
     setIconDataUrl("");
-    setBackgroundDataUrl("");
-    setImageInfo(null);
+    setCoverDataUrl("");
+    setIconInfo(null);
     setError(null);
     imageElementRef.current = null;
   }, []);
@@ -127,87 +142,69 @@ export default function ImageIconGeneratorPage() {
     }
   }, []);
 
-  const handleApplyPreset = useCallback((color: string) => {
-    const normalized = normalizeHex(color);
-    if (!normalized) {
-      return;
-    }
-    setBackgroundColor(normalized);
-    setBackgroundHexInput(normalized);
-  }, []);
-
-  const processFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith("image/")) {
-        toast.error("이미지 파일을 선택해주세요.");
-        resetOutputs();
-        return;
-      }
-
+  const handleSelectIcon = useCallback(
+    (option: IconOption) => {
+      selectedIconIdRef.current = option.id;
+      setSelectedIcon(option);
       resetOutputs();
-      lastFileRef.current = file;
       setIsProcessing(true);
-      setBaseFilename(sanitizeBaseFilename(file.name));
+      setBaseFilename(sanitizeBaseFilename(`unibook-${option.label}`));
 
-      const objectUrl = URL.createObjectURL(file);
       const image = new Image();
-
       image.onload = () => {
-        URL.revokeObjectURL(objectUrl);
+        if (selectedIconIdRef.current !== option.id) {
+          return;
+        }
         imageElementRef.current = image;
-        setImageInfo({
-          fileName: file.name,
+        setIconInfo({
+          fileName: `${option.label}.png`,
           width: image.naturalWidth,
           height: image.naturalHeight,
         });
 
-        const suggestedRgb = softenColor(extractAverageColor(image));
-        const suggestedHex = rgbToHex(suggestedRgb);
-        setBackgroundColor(suggestedHex);
-        setBackgroundHexInput(suggestedHex);
+        setBackgroundColor("#ffffff");
+        setBackgroundHexInput("#ffffff");
         setImageVersion((value) => value + 1);
       };
 
       image.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        if (imageElementRef.current === image) {
-          imageElementRef.current = null;
+        if (selectedIconIdRef.current !== option.id) {
+          return;
         }
-        const message = "이미지를 불러오는 데 실패했습니다.";
+        const message = "아이콘 이미지를 불러오지 못했습니다.";
         setError(message);
         setIsProcessing(false);
         toast.error(message);
       };
 
-      image.src = objectUrl;
+      image.src = option.src;
     },
     [resetOutputs]
   );
 
-  const handleFileChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0] ?? null;
-      if (!file) {
-        resetOutputs();
-        lastFileRef.current = null;
-        setBackgroundColor(DEFAULT_BACKGROUND_COLOR);
-        setBackgroundHexInput(DEFAULT_BACKGROUND_COLOR);
-        setCornerRadiusPercent(DEFAULT_CORNER_RADIUS_PERCENT);
-        setPadding(DEFAULT_PADDING);
-        setIsProcessing(false);
-        return;
-      }
+  const handleReprocess = useCallback(() => {
+    if (!imageElementRef.current) {
+      toast.warning("다시 생성할 아이콘이 없습니다.");
+      return;
+    }
 
-      processFile(file);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    },
-    [processFile, resetOutputs]
-  );
+    setImageVersion((value) => value + 1);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    resetOutputs();
+    setSelectedIcon(null);
+    selectedIconIdRef.current = null;
+    setBaseFilename(DEFAULT_BASE_FILENAME);
+    setBackgroundColor(DEFAULT_BACKGROUND_COLOR);
+    setBackgroundHexInput(DEFAULT_BACKGROUND_COLOR);
+    setCornerRadiusPercent(DEFAULT_CORNER_RADIUS_PERCENT);
+    setPadding(DEFAULT_PADDING);
+    setIsProcessing(false);
+  }, [resetOutputs]);
 
   const handleDownload = useCallback(
-    (dataUrl: string, suffix: "icon" | "background") => {
+    (dataUrl: string, suffix: "icon" | "cover") => {
       if (!dataUrl) {
         toast.warning("다운로드할 이미지가 없습니다.");
         return;
@@ -222,34 +219,11 @@ export default function ImageIconGeneratorPage() {
       link.click();
       document.body.removeChild(link);
       toast.success(
-        `${suffix === "icon" ? "아이콘" : "배경"} PNG를 다운로드했어요.`
+        `${suffix === "icon" ? "아이콘" : "커버"} PNG를 다운로드했어요.`
       );
     },
     [baseFilename]
   );
-
-  const handleReset = useCallback(() => {
-    resetOutputs();
-    setBaseFilename(DEFAULT_BASE_FILENAME);
-    setBackgroundColor(DEFAULT_BACKGROUND_COLOR);
-    setBackgroundHexInput(DEFAULT_BACKGROUND_COLOR);
-    setCornerRadiusPercent(DEFAULT_CORNER_RADIUS_PERCENT);
-    setPadding(DEFAULT_PADDING);
-    lastFileRef.current = null;
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    setIsProcessing(false);
-  }, [resetOutputs]);
-
-  const handleReprocess = useCallback(() => {
-    if (!imageElementRef.current) {
-      toast.warning("다시 생성할 이미지가 없습니다.");
-      return;
-    }
-
-    setImageVersion((value) => value + 1);
-  }, []);
 
   useEffect(() => {
     const image = imageElementRef.current;
@@ -272,7 +246,7 @@ export default function ImageIconGeneratorPage() {
       }
 
       setIconDataUrl(assets.icon);
-      setBackgroundDataUrl(assets.background);
+      setCoverDataUrl(assets.cover);
       setError(null);
     } catch (err) {
       if (taskIdRef.current !== currentTaskId) {
@@ -285,7 +259,7 @@ export default function ImageIconGeneratorPage() {
           : "이미지 처리 중 오류가 발생했습니다.";
       setError(message);
       setIconDataUrl("");
-      setBackgroundDataUrl("");
+      setCoverDataUrl("");
     } finally {
       if (taskIdRef.current === currentTaskId) {
         setIsProcessing(false);
@@ -293,14 +267,14 @@ export default function ImageIconGeneratorPage() {
     }
   }, [backgroundColor, cornerRadiusPercent, padding, imageVersion]);
 
-  const hasGeneratedAssets = Boolean(iconDataUrl || backgroundDataUrl);
+  const hasGeneratedAssets = Boolean(iconDataUrl || coverDataUrl);
   const hasCustomBackground = backgroundColor !== DEFAULT_BACKGROUND_COLOR;
   const hasCustomCorner = cornerRadiusPercent !== DEFAULT_CORNER_RADIUS_PERCENT;
   const hasCustomPadding = padding !== DEFAULT_PADDING;
 
   const canResetState = Boolean(
     hasGeneratedAssets ||
-      imageInfo ||
+      selectedIcon ||
       error ||
       baseFilename !== DEFAULT_BASE_FILENAME ||
       hasCustomBackground ||
@@ -308,10 +282,21 @@ export default function ImageIconGeneratorPage() {
       hasCustomPadding
   );
 
-  const isPresetActive = useCallback(
-    (color: string) => backgroundColor === normalizeHex(color),
-    [backgroundColor]
-  );
+  const selectionDescription = useMemo(() => {
+    if (!selectedIcon) {
+      return "아이콘을 선택하면 미리보기와 다운로드 옵션이 활성화됩니다.";
+    }
+
+    if (isProcessing) {
+      return "아이콘을 준비하는 중입니다...";
+    }
+
+    if (error) {
+      return error;
+    }
+
+    return "아래에서 생성된 이미지를 확인하고 다운로드할 수 있어요.";
+  }, [error, isProcessing, selectedIcon]);
 
   return (
     <div className="flex min-h-screen w-full max-w-full">
@@ -322,9 +307,9 @@ export default function ImageIconGeneratorPage() {
           <header className="sticky top-0 z-20 flex w-full items-center gap-3 border-b bg-muted/40 px-4 py-4 backdrop-blur-sm supports-[backdrop-filter]:bg-muted/60 sm:px-6">
             <SidebarTrigger />
             <div>
-              <h1 className="text-lg font-semibold">이미지 아이콘 생성</h1>
+              <h1 className="text-lg font-semibold">유니북 아이콘 생성</h1>
               <p className="text-sm text-muted-foreground">
-                이미지 파일을 기반으로 1:1 아이콘과 배경 이미지를 빠르게
+                유니북 아이콘셋을 활용해 1:1 아이콘과 3000×1200 커버 이미지를
                 만들어보세요.
               </p>
             </div>
@@ -332,41 +317,40 @@ export default function ImageIconGeneratorPage() {
 
           <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             <div className="flex w-full flex-col gap-6 lg:flex-row">
-              <Card className="w-full shadow-sm lg:max-w-sm">
+              <Card className="w-full shadow-sm lg:max-w-md">
                 <CardHeader>
-                  <CardTitle>이미지 업로드</CardTitle>
-                  <CardDescription>
-                    JPG, PNG, WebP 등 대부분의 이미지 파일을 지원해요.
-                  </CardDescription>
+                  <CardTitle>아이콘 선택 및 설정</CardTitle>
+                  <CardDescription>{selectionDescription}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="imageFile">이미지 파일</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        ref={fileInputRef}
-                        id="imageFile"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleReprocess}
-                        disabled={!imageElementRef.current || isProcessing}
-                      >
-                        <RefreshCcw
-                          className="mr-2 size-4"
-                          aria-hidden="true"
-                        />
-                        다시 생성
-                      </Button>
+                  <div className="space-y-3">
+                    <Label>유니북 아이콘셋</Label>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+                      {UNIBOOK_ICONS.map((icon) => {
+                        const active = selectedIcon?.id === icon.id;
+                        return (
+                          <button
+                            key={icon.id}
+                            type="button"
+                            onClick={() => handleSelectIcon(icon)}
+                            className={cn(
+                              "group flex flex-col items-center gap-2 rounded-md border p-3 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                              active
+                                ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                : "border-transparent bg-muted/40 text-muted-foreground hover:border-primary/50 hover:bg-muted"
+                            )}
+                            aria-pressed={active}
+                          >
+                            <img
+                              src={icon.src}
+                              alt={`${icon.label} 아이콘 미리보기`}
+                              className="h-12 w-12 rounded-md border border-transparent bg-background object-contain transition group-hover:border-primary/40"
+                            />
+                            <span>{icon.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      동일한 파일을 다시 선택하지 않고도 "다시 생성"으로 최신
-                      설정을 적용할 수 있어요.
-                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -378,7 +362,7 @@ export default function ImageIconGeneratorPage() {
                       placeholder={DEFAULT_BASE_FILENAME}
                     />
                     <p className="text-xs text-muted-foreground">
-                      아이콘은 `이름-icon.png`, 배경은 `이름-background.png`로
+                      아이콘은 `이름-icon.png`, 커버는 `이름-cover.png`로
                       저장돼요.
                     </p>
                   </div>
@@ -409,37 +393,6 @@ export default function ImageIconGeneratorPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>컬러 프리셋</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {COLOR_PRESETS.map((preset) => {
-                        const background = normalizeHex(preset.backgroundColor);
-                        if (!background) {
-                          return null;
-                        }
-
-                        const active = isPresetActive(background);
-                        return (
-                          <Button
-                            key={preset.name}
-                            type="button"
-                            size="sm"
-                            variant={active ? "default" : "outline"}
-                            onClick={() => handleApplyPreset(background)}
-                            className="flex items-center gap-2"
-                          >
-                            <span
-                              className="h-4 w-4 rounded-full border"
-                              style={{ backgroundColor: background }}
-                              aria-hidden="true"
-                            />
-                            {preset.name}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="cornerRadius">모서리 곡률</Label>
                     <div className="flex items-center gap-3">
                       <input
@@ -461,9 +414,6 @@ export default function ImageIconGeneratorPage() {
                         %
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Squircle 형태의 곡률을 퍼센트 단위로 조절할 수 있어요.
-                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -485,19 +435,16 @@ export default function ImageIconGeneratorPage() {
                         {padding}px
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      여백을 늘리면 아이콘 내부에 더 넉넉한 공간이 생겨요.
-                    </p>
                   </div>
 
-                  {imageInfo ? (
+                  {iconInfo ? (
                     <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm leading-tight">
-                      <p className="font-medium">선택한 파일</p>
+                      <p className="font-medium">선택한 아이콘</p>
                       <p className="mt-1 break-all text-muted-foreground">
-                        {imageInfo.fileName}
+                        {iconInfo.fileName}
                       </p>
                       <p className="text-muted-foreground">
-                        해상도 {imageInfo.width} × {imageInfo.height}
+                        해상도 {iconInfo.width} × {iconInfo.height}
                       </p>
                     </div>
                   ) : null}
@@ -523,6 +470,16 @@ export default function ImageIconGeneratorPage() {
                     <RotateCcw className="size-4" aria-hidden="true" />
                     초기화
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleReprocess}
+                    disabled={!imageElementRef.current || isProcessing}
+                    className="inline-flex items-center gap-2"
+                  >
+                    <RefreshCcw className="size-4" aria-hidden="true" />
+                    다시 생성
+                  </Button>
                 </CardFooter>
               </Card>
 
@@ -531,7 +488,7 @@ export default function ImageIconGeneratorPage() {
                   <CardHeader>
                     <CardTitle>아이콘 (512×512)</CardTitle>
                     <CardDescription>
-                      정사각형 비율로 잘라낸 아이콘을 다운로드할 수 있어요.
+                      정사각형 비율의 PNG 아이콘을 바로 다운로드할 수 있어요.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -550,7 +507,7 @@ export default function ImageIconGeneratorPage() {
                         />
                       ) : (
                         <p className="text-sm text-muted-foreground">
-                          이미지를 업로드하면 아이콘 미리보기가 표시됩니다.
+                          아이콘을 선택하면 미리보기가 표시됩니다.
                         </p>
                       )}
                     </div>
@@ -570,9 +527,10 @@ export default function ImageIconGeneratorPage() {
 
                 <Card className="shadow-sm">
                   <CardHeader>
-                    <CardTitle>배경 이미지 (3000×1200)</CardTitle>
+                    <CardTitle>커버 이미지 (3000×1200)</CardTitle>
                     <CardDescription>
-                      선택한 배경색을 중심으로 커버 이미지를 함께 생성합니다.
+                      선택한 색상과 아이콘으로 넉넉한 비율의 커버 이미지를
+                      생성합니다.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -581,17 +539,17 @@ export default function ImageIconGeneratorPage() {
                         <p className="text-sm text-destructive">{error}</p>
                       ) : isProcessing ? (
                         <p className="text-sm text-muted-foreground">
-                          배경 이미지를 만드는 중입니다...
+                          커버 이미지를 만드는 중입니다...
                         </p>
-                      ) : backgroundDataUrl ? (
+                      ) : coverDataUrl ? (
                         <img
-                          src={backgroundDataUrl}
-                          alt="배경 미리보기"
+                          src={coverDataUrl}
+                          alt="커버 미리보기"
                           className="h-auto w-full rounded-lg shadow-sm"
                         />
                       ) : (
                         <p className="text-sm text-muted-foreground">
-                          이미지를 업로드하면 자동으로 배경 이미지를 생성합니다.
+                          아이콘을 선택하면 자동으로 커버 이미지를 생성합니다.
                         </p>
                       )}
                     </div>
@@ -599,10 +557,8 @@ export default function ImageIconGeneratorPage() {
                   <CardFooter className="flex justify-end gap-2">
                     <Button
                       variant="secondary"
-                      onClick={() =>
-                        handleDownload(backgroundDataUrl, "background")
-                      }
-                      disabled={!backgroundDataUrl}
+                      onClick={() => handleDownload(coverDataUrl, "cover")}
+                      disabled={!coverDataUrl}
                       className="inline-flex items-center gap-2"
                     >
                       <Download className="size-4" aria-hidden="true" />
@@ -639,15 +595,11 @@ function generateAssetsFromImage(
     safeCornerPercent,
     safePadding
   );
-  const backgroundCanvas = createBackgroundCanvas(
-    image,
-    iconCanvas,
-    backgroundColor
-  );
+  const coverCanvas = createCoverCanvas(image, iconCanvas, backgroundColor);
 
   return {
     icon: iconCanvas.toDataURL("image/png"),
-    background: backgroundCanvas.toDataURL("image/png"),
+    cover: coverCanvas.toDataURL("image/png"),
   };
 }
 
@@ -694,7 +646,7 @@ function createIconCanvas(
     rect.sWidth,
     rect.sHeight,
     inset,
-    inset,
+    inset - 10,
     targetSize,
     targetSize
   );
@@ -704,62 +656,28 @@ function createIconCanvas(
   return canvas;
 }
 
-function createBackgroundCanvas(
+function createCoverCanvas(
   image: HTMLImageElement,
   iconCanvas: HTMLCanvasElement,
   baseColor: RgbColor
 ) {
   const canvas = document.createElement("canvas");
-  canvas.width = BACKGROUND_WIDTH;
-  canvas.height = BACKGROUND_HEIGHT;
+  canvas.width = COVER_WIDTH;
+  canvas.height = COVER_HEIGHT;
   const context = canvas.getContext("2d");
 
   if (!context) {
-    throw new Error("배경 캔버스를 생성할 수 없습니다.");
+    throw new Error("커버 캔버스를 생성할 수 없습니다.");
   }
 
   context.fillStyle = toRgb(baseColor);
-  context.fillRect(0, 0, BACKGROUND_WIDTH, BACKGROUND_HEIGHT);
+  context.fillRect(0, 0, COVER_WIDTH, COVER_HEIGHT);
 
-  const rect = getCoverSourceRect(
-    image.naturalWidth || image.width,
-    image.naturalHeight || image.height,
-    BACKGROUND_WIDTH,
-    BACKGROUND_HEIGHT
-  );
+  const iconX = (COVER_WIDTH - COVER_ICON_SIZE) / 2;
+  const iconY = (COVER_HEIGHT - COVER_ICON_SIZE) / 2 - 30;
 
   context.save();
-  context.globalAlpha = 0.28;
-  context.drawImage(
-    image,
-    rect.sx,
-    rect.sy,
-    rect.sWidth,
-    rect.sHeight,
-    0,
-    0,
-    BACKGROUND_WIDTH,
-    BACKGROUND_HEIGHT
-  );
-  context.restore();
-
-  context.fillStyle = toRgba(baseColor, 0.6);
-  context.fillRect(0, 0, BACKGROUND_WIDTH, BACKGROUND_HEIGHT);
-
-  const iconX = (BACKGROUND_WIDTH - BACKGROUND_ICON_SIZE) / 2;
-  const iconY = (BACKGROUND_HEIGHT - BACKGROUND_ICON_SIZE) / 2;
-
-  context.save();
-  context.shadowColor = "rgba(0, 0, 0, 0.18)";
-  context.shadowBlur = 24;
-  context.shadowOffsetY = 12;
-  context.drawImage(
-    iconCanvas,
-    iconX,
-    iconY,
-    BACKGROUND_ICON_SIZE,
-    BACKGROUND_ICON_SIZE
-  );
+  context.drawImage(iconCanvas, iconX, iconY, COVER_ICON_SIZE, COVER_ICON_SIZE);
   context.restore();
 
   return canvas;
@@ -792,42 +710,6 @@ function getCoverSourceRect(
   const sy = (sourceHeight - sHeight) / 2;
 
   return { sx: 0, sy, sWidth, sHeight };
-}
-
-function extractAverageColor(image: HTMLImageElement): RgbColor {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    return FALLBACK_COLOR;
-  }
-
-  context.drawImage(image, 0, 0, 1, 1);
-  const data = context.getImageData(0, 0, 1, 1).data;
-  const alpha = data[3] / 255;
-
-  if (alpha === 0) {
-    return FALLBACK_COLOR;
-  }
-
-  const blend = (value: number) =>
-    clamp(Math.round(value * alpha + 255 * (1 - alpha)), 0, 255);
-
-  return {
-    r: blend(data[0]),
-    g: blend(data[1]),
-    b: blend(data[2]),
-  };
-}
-
-function softenColor(color: RgbColor, amount = 0.15): RgbColor {
-  return {
-    r: clamp(Math.round(color.r + (255 - color.r) * amount), 0, 255),
-    g: clamp(Math.round(color.g + (255 - color.g) * amount), 0, 255),
-    b: clamp(Math.round(color.b + (255 - color.b) * amount), 0, 255),
-  };
 }
 
 function generateSquirclePath(
@@ -867,15 +749,6 @@ function generateSquirclePath(
 
 function toRgb(color: RgbColor) {
   return `rgb(${color.r}, ${color.g}, ${color.b})`;
-}
-
-function toRgba(color: RgbColor, alpha: number) {
-  return `rgba(${color.r}, ${color.g}, ${color.b}, ${clamp(alpha, 0, 1)})`;
-}
-
-function rgbToHex(color: RgbColor) {
-  const toHex = (value: number) => value.toString(16).padStart(2, "0");
-  return `#${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`;
 }
 
 function hexToRgb(value: string): RgbColor | null {
